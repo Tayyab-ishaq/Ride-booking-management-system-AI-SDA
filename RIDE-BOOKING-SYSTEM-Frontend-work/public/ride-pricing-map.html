@@ -1,0 +1,517 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Ride/Food Price Estimator</title>
+
+  <script src="https://cdn.tailwindcss.com"></script>
+
+  <link
+    rel="stylesheet"
+    href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+    integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY="
+    crossorigin=""
+  />
+  <script
+    src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+    integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo="
+    crossorigin=""
+  ></script>
+
+  <style>
+    html, body { height: 100%; margin: 0; }
+    #map { height: 100%; width: 100%; }
+    .leaflet-control-attribution { font-size: 11px; }
+  </style>
+</head>
+<body class="bg-slate-950 text-slate-100">
+  <div id="map" class="fixed inset-0 z-0"></div>
+
+  <div class="fixed top-3 left-1/2 -translate-x-1/2 z-[1000] w-[min(94vw,760px)]">
+    <div class="rounded-2xl border border-white/20 bg-slate-900/80 backdrop-blur-xl shadow-2xl p-3 sm:p-4">
+      <div class="flex flex-col gap-3">
+        <div class="flex gap-2">
+          <input
+            id="searchInput"
+            type="text"
+            placeholder="Search destination (Karachi, Pakistan)..."
+            class="w-full rounded-xl border border-slate-700 bg-slate-800 px-4 py-2.5 text-sm outline-none focus:ring-2 focus:ring-cyan-400"
+          />
+          <button
+            id="searchBtn"
+            class="rounded-xl bg-cyan-500 hover:bg-cyan-400 text-slate-900 font-semibold px-4 py-2.5 transition"
+          >
+            Search
+          </button>
+        </div>
+
+        <ul id="searchResults" class="hidden max-h-56 overflow-auto rounded-xl border border-slate-700 bg-slate-800 text-sm"></ul>
+
+        <div class="grid grid-cols-1 sm:grid-cols-3 gap-2">
+          <label class="flex items-center gap-2 rounded-xl border border-slate-700 bg-slate-800 px-3 py-2 text-sm">
+            <input id="customPickupToggle" type="checkbox" class="accent-cyan-400" />
+            Custom pickup
+          </label>
+
+          <select id="vehicleType" class="rounded-xl border border-slate-700 bg-slate-800 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-cyan-400">
+            <option value="bike" selected>Bike</option>
+            <option value="car">Car</option>
+            <option value="van">Van</option>
+          </select>
+
+          <input
+            id="webhookUrl"
+            type="text"
+            value=""
+            placeholder="https://your-n8n-instance/webhook/ride-ranking"
+            class="rounded-xl border border-slate-700 bg-slate-800 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-cyan-400"
+            title="n8n webhook URL"
+          />
+        </div>
+
+        <p class="text-xs text-slate-400">Tip: click map or drag marker to set destination.</p>
+      </div>
+    </div>
+  </div>
+
+  <div class="fixed bottom-0 left-0 right-0 z-[1000]">
+    <div class="mx-auto w-[min(100%,900px)] rounded-t-3xl border border-white/20 bg-slate-900/90 backdrop-blur-xl shadow-2xl p-4 sm:p-5">
+      <div class="grid gap-3 sm:gap-4">
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <div class="rounded-2xl border border-slate-700 bg-slate-800 p-3">
+            <p class="text-xs uppercase tracking-wide text-slate-400 mb-1">Pickup</p>
+            <p id="pickupText" class="text-sm text-slate-100">24.8607, 67.0011 (fixed)</p>
+          </div>
+          <div class="rounded-2xl border border-slate-700 bg-slate-800 p-3">
+            <p class="text-xs uppercase tracking-wide text-slate-400 mb-1">Selected Destination</p>
+            <p id="destinationText" class="text-sm text-slate-100">Choose a destination on map</p>
+          </div>
+        </div>
+
+        <div class="flex flex-col sm:flex-row gap-3 sm:items-center sm:justify-between">
+          <button
+            id="priceBtn"
+            class="w-full sm:w-auto rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-900 font-bold px-6 py-3 transition disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            Get Price
+          </button>
+          <p id="statusMsg" class="text-sm text-slate-300"></p>
+        </div>
+
+        <div id="priceCard" class="hidden rounded-2xl border border-emerald-500/30 bg-emerald-500/10 p-4">
+          <div class="flex items-center justify-between mb-2">
+            <h2 class="text-lg font-bold text-emerald-300">Estimated Fare</h2>
+            <span id="totalPrice" class="text-2xl font-extrabold text-emerald-200">—</span>
+          </div>
+          <div class="grid grid-cols-2 sm:grid-cols-4 gap-2 text-sm">
+            <div class="rounded-xl bg-slate-900/60 p-2">
+              <p class="text-slate-400">Distance</p>
+              <p id="distanceVal" class="font-semibold">—</p>
+            </div>
+            <div class="rounded-xl bg-slate-900/60 p-2">
+              <p class="text-slate-400">Duration</p>
+              <p id="durationVal" class="font-semibold">—</p>
+            </div>
+            <div class="rounded-xl bg-slate-900/60 p-2">
+              <p class="text-slate-400">Surge</p>
+              <p id="surgeVal" class="font-semibold">—</p>
+            </div>
+            <div class="rounded-xl bg-slate-900/60 p-2">
+              <p class="text-slate-400">Base Fare</p>
+              <p id="baseVal" class="font-semibold">—</p>
+            </div>
+          </div>
+          <p id="successMsg" class="mt-3 text-sm text-emerald-200"></p>
+        </div>
+
+        <div id="errorCard" class="hidden rounded-2xl border border-red-500/30 bg-red-500/10 p-3 text-sm text-red-200"></div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const KARACHI = { lat: 24.8607, lng: 67.0011 };
+    const DEFAULT_PICKUP = { ...KARACHI };
+
+    const state = {
+      pickup: { ...DEFAULT_PICKUP },
+      destination: { ...KARACHI },
+      pickupAddress: "24.8607, 67.0011 (fixed)",
+      destinationAddress: "",
+      customPickup: false
+    };
+
+    const searchInput = document.getElementById("searchInput");
+    const searchBtn = document.getElementById("searchBtn");
+    const searchResults = document.getElementById("searchResults");
+    const customPickupToggle = document.getElementById("customPickupToggle");
+    const vehicleTypeEl = document.getElementById("vehicleType");
+    const webhookUrlEl = document.getElementById("webhookUrl");
+    const pickupText = document.getElementById("pickupText");
+    const destinationText = document.getElementById("destinationText");
+    const priceBtn = document.getElementById("priceBtn");
+    const statusMsg = document.getElementById("statusMsg");
+    const priceCard = document.getElementById("priceCard");
+    const errorCard = document.getElementById("errorCard");
+    const totalPrice = document.getElementById("totalPrice");
+    const distanceVal = document.getElementById("distanceVal");
+    const durationVal = document.getElementById("durationVal");
+    const surgeVal = document.getElementById("surgeVal");
+    const baseVal = document.getElementById("baseVal");
+    const successMsg = document.getElementById("successMsg");
+    const fareProxyUrl = "http://localhost:8000/api/webhooks/fare-estimate";
+
+    const map = L.map("map", { zoomControl: false }).setView([KARACHI.lat, KARACHI.lng], 13);
+    L.control.zoom({ position: "bottomright" }).addTo(map);
+
+    L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+      maxZoom: 20,
+      attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+    }).addTo(map);
+
+    L.Icon.Default.mergeOptions({
+      iconRetinaUrl: "https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon-2x.png",
+      iconUrl: "https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png",
+      shadowUrl: "https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png"
+    });
+
+    const destinationMarker = L.marker([state.destination.lat, state.destination.lng], { draggable: true }).addTo(map);
+    destinationMarker.bindPopup("Destination").openPopup();
+
+    const pickupCircle = L.circleMarker([state.pickup.lat, state.pickup.lng], {
+      radius: 8,
+      color: "#22d3ee",
+      fillColor: "#22d3ee",
+      fillOpacity: 0.9
+    }).addTo(map).bindTooltip("Pickup", { permanent: false, direction: "top" });
+
+    let pickupMarker = null;
+
+    const fmtMoney = (n) => `PKR ${Number(n).toFixed(0)}`;
+    const toNum = (v, fallback = null) => {
+      const n = Number(v);
+      return Number.isFinite(n) ? n : fallback;
+    };
+
+    function haversineKm(a, b) {
+      const R = 6371;
+      const dLat = ((b.lat - a.lat) * Math.PI) / 180;
+      const dLng = ((b.lng - a.lng) * Math.PI) / 180;
+      const lat1 = (a.lat * Math.PI) / 180;
+      const lat2 = (b.lat * Math.PI) / 180;
+      const x =
+        Math.sin(dLat / 2) ** 2 +
+        Math.sin(dLng / 2) ** 2 * Math.cos(lat1) * Math.cos(lat2);
+      return 2 * R * Math.asin(Math.sqrt(x));
+    }
+
+    function setStatus(message, kind = "info") {
+      statusMsg.textContent = message || "";
+      statusMsg.className = "text-sm";
+      if (kind === "error") statusMsg.classList.add("text-red-300");
+      else if (kind === "success") statusMsg.classList.add("text-emerald-300");
+      else statusMsg.classList.add("text-slate-300");
+    }
+
+    function showError(message) {
+      errorCard.textContent = message;
+      errorCard.classList.remove("hidden");
+    }
+
+    function clearError() {
+      errorCard.classList.add("hidden");
+      errorCard.textContent = "";
+    }
+
+    function updateAddressUI() {
+      pickupText.textContent = state.pickupAddress || `${state.pickup.lat.toFixed(5)}, ${state.pickup.lng.toFixed(5)}`;
+      destinationText.textContent = state.destinationAddress || `${state.destination.lat.toFixed(5)}, ${state.destination.lng.toFixed(5)}`;
+    }
+
+    async function reverseGeocode(lat, lng) {
+      const url = `https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${encodeURIComponent(lat)}&lon=${encodeURIComponent(lng)}&addressdetails=1`;
+      const res = await fetch(url, { headers: { Accept: "application/json" } });
+      if (!res.ok) throw new Error("Failed to resolve address");
+      const data = await res.json();
+      return data.display_name || `${lat.toFixed(5)}, ${lng.toFixed(5)}`;
+    }
+
+    async function setDestination(lat, lng, recenter = false) {
+      state.destination = { lat, lng };
+      destinationMarker.setLatLng([lat, lng]);
+      if (recenter) map.flyTo([lat, lng], Math.max(map.getZoom(), 14), { duration: 0.6 });
+
+      destinationText.textContent = "Resolving address...";
+      try {
+        state.destinationAddress = await reverseGeocode(lat, lng);
+      } catch {
+        state.destinationAddress = `${lat.toFixed(5)}, ${lng.toFixed(5)}`;
+      }
+      updateAddressUI();
+    }
+
+    async function setPickup(lat, lng) {
+      state.pickup = { lat, lng };
+      pickupCircle.setLatLng([lat, lng]);
+
+      pickupText.textContent = "Resolving pickup...";
+      try {
+        state.pickupAddress = await reverseGeocode(lat, lng);
+      } catch {
+        state.pickupAddress = `${lat.toFixed(5)}, ${lng.toFixed(5)}`;
+      }
+      updateAddressUI();
+    }
+
+    function normalizePricing(raw) {
+      const d = raw?.data ?? raw ?? {};
+      const b = d.breakdown ?? d.pricing ?? {};
+
+      const distanceKm =
+        toNum(d.distance_km) ??
+        toNum(d.distance) ??
+        toNum(b.distance_km) ??
+        toNum(b.distance) ??
+        haversineKm(state.pickup, state.destination);
+
+      const durationMin =
+        toNum(d.duration_min) ??
+        toNum(d.duration_minutes) ??
+        toNum(d.duration) ??
+        toNum(b.duration_min) ??
+        toNum(b.duration_minutes) ??
+        Math.max(3, Math.round((distanceKm / 28) * 60));
+
+      const surge =
+        toNum(d.surge) ??
+        toNum(d.surge_multiplier) ??
+        toNum(b.surge) ??
+        toNum(b.surge_multiplier) ??
+        1.0;
+
+      const baseFare =
+        toNum(d.base_fare) ??
+        toNum(d.base) ??
+        toNum(b.base_fare) ??
+        toNum(b.base) ??
+        80;
+
+      const perKm =
+        toNum(d.per_km) ??
+        toNum(d.rate_per_km) ??
+        toNum(b.per_km) ??
+        toNum(b.rate_per_km) ??
+        35;
+
+      const total =
+        toNum(d.total_price) ??
+        toNum(d.total) ??
+        toNum(d.price) ??
+        toNum(d.fare) ??
+        toNum(b.total_price) ??
+        toNum(b.total) ??
+        Math.round((baseFare + perKm * distanceKm) * surge);
+
+      return { distanceKm, durationMin, surge, baseFare, total };
+    }
+
+    function renderPricing(pricing) {
+      totalPrice.textContent = fmtMoney(pricing.total);
+      distanceVal.textContent = `${pricing.distanceKm.toFixed(2)} km`;
+      durationVal.textContent = `${Math.round(pricing.durationMin)} min`;
+      surgeVal.textContent = `${pricing.surge.toFixed(2)}x`;
+      baseVal.textContent = fmtMoney(pricing.baseFare);
+
+      successMsg.textContent = "Price calculated successfully.";
+      priceCard.classList.remove("hidden");
+    }
+
+    async function searchPlaces(query) {
+      const url = `https://nominatim.openstreetmap.org/search?format=jsonv2&q=${encodeURIComponent(query)}&countrycodes=pk&limit=6&addressdetails=1`;
+      const res = await fetch(url, { headers: { Accept: "application/json" } });
+      if (!res.ok) throw new Error("Search request failed");
+      return res.json();
+    }
+
+    function renderSearchResults(items) {
+      searchResults.innerHTML = "";
+      if (!items.length) {
+        searchResults.classList.remove("hidden");
+        searchResults.innerHTML = `<li class="px-3 py-2 text-slate-400">No results found</li>`;
+        return;
+      }
+
+      items.forEach((item) => {
+        const li = document.createElement("li");
+        li.className = "px-3 py-2 hover:bg-slate-700/70 cursor-pointer border-b border-slate-700/60 last:border-b-0";
+        li.textContent = item.display_name;
+        li.addEventListener("click", async () => {
+          searchResults.classList.add("hidden");
+          searchResults.innerHTML = "";
+          searchInput.value = item.display_name;
+
+          const lat = Number(item.lat);
+          const lng = Number(item.lon);
+          if (Number.isFinite(lat) && Number.isFinite(lng)) {
+            await setDestination(lat, lng, true);
+          }
+        });
+        searchResults.appendChild(li);
+      });
+
+      searchResults.classList.remove("hidden");
+    }
+
+    map.on("click", async (e) => {
+      await setDestination(e.latlng.lat, e.latlng.lng);
+    });
+
+    destinationMarker.on("dragend", async () => {
+      const p = destinationMarker.getLatLng();
+      await setDestination(p.lat, p.lng);
+    });
+
+    customPickupToggle.addEventListener("change", async (e) => {
+      state.customPickup = e.target.checked;
+
+      if (state.customPickup) {
+        if (!pickupMarker) {
+          pickupMarker = L.marker([state.pickup.lat, state.pickup.lng], { draggable: true }).addTo(map);
+          pickupMarker.bindPopup("Pickup").openPopup();
+          pickupMarker.on("dragend", async () => {
+            const p = pickupMarker.getLatLng();
+            await setPickup(p.lat, p.lng);
+          });
+        }
+        pickupCircle.setStyle({ opacity: 0, fillOpacity: 0 });
+        await setPickup(state.pickup.lat, state.pickup.lng);
+      } else {
+        if (pickupMarker) {
+          map.removeLayer(pickupMarker);
+          pickupMarker = null;
+        }
+        state.pickup = { ...DEFAULT_PICKUP };
+        state.pickupAddress = "24.8607, 67.0011 (fixed)";
+        pickupCircle.setLatLng([state.pickup.lat, state.pickup.lng]);
+        pickupCircle.setStyle({ opacity: 1, fillOpacity: 0.9 });
+        updateAddressUI();
+      }
+    });
+
+    searchBtn.addEventListener("click", async () => {
+      clearError();
+      setStatus("");
+      const q = searchInput.value.trim();
+      if (!q) {
+        showError("Please enter an address to search.");
+        return;
+      }
+
+      searchBtn.disabled = true;
+      searchBtn.textContent = "Searching...";
+      try {
+        const results = await searchPlaces(q);
+        renderSearchResults(results);
+      } catch (err) {
+        showError(err.message || "Address search failed.");
+      } finally {
+        searchBtn.disabled = false;
+        searchBtn.textContent = "Search";
+      }
+    });
+
+    searchInput.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") searchBtn.click();
+    });
+
+    priceBtn.addEventListener("click", async () => {
+      clearError();
+      setStatus("");
+      priceCard.classList.add("hidden");
+
+      const webhookUrl = webhookUrlEl.value.trim();
+      if (!webhookUrl) {
+        showError("Webhook URL is required.");
+        return;
+      }
+
+      if (!state.destination || !Number.isFinite(state.destination.lat) || !Number.isFinite(state.destination.lng)) {
+        showError("Please select a valid destination.");
+        return;
+      }
+
+      const payload = {
+        pickup: {
+          lat: state.pickup.lat,
+          lng: state.pickup.lng
+        },
+        destination: {
+          lat: state.destination.lat,
+          lng: state.destination.lng
+        },
+        vehicle_type: vehicleTypeEl.value || "bike",
+        webhook_url: webhookUrl
+      };
+
+      priceBtn.disabled = true;
+      priceBtn.textContent = "Calculating...";
+      setStatus("Sending request to pricing service...");
+
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 25000);
+
+      try {
+        const res = await fetch(fareProxyUrl, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+          signal: controller.signal
+        });
+
+        if (!res.ok) {
+          let detail = "";
+          try {
+            const json = await res.json();
+            detail = typeof json?.detail === "string"
+              ? json.detail
+              : JSON.stringify(json?.detail || json);
+          } catch {
+            detail = await res.text();
+          }
+          throw new Error(`Webhook error (${res.status}): ${detail || "Unknown error"}`);
+        }
+
+        const data = await res.json();
+        const pricing = normalizePricing(data);
+        renderPricing(pricing);
+
+        setStatus("Price fetched successfully.", "success");
+      } catch (err) {
+        const msg =
+          err.name === "AbortError"
+            ? "Request timed out. Please try again."
+            : (err.message || "Failed to calculate price.");
+        showError(msg);
+        setStatus("Unable to fetch price.", "error");
+      } finally {
+        clearTimeout(timeout);
+        priceBtn.disabled = false;
+        priceBtn.textContent = "Get Price";
+      }
+    });
+
+    document.addEventListener("click", (e) => {
+      if (!searchResults.contains(e.target) && e.target !== searchInput && e.target !== searchBtn) {
+        searchResults.classList.add("hidden");
+      }
+    });
+
+    (async () => {
+      state.pickupAddress = "24.8607, 67.0011 (fixed)";
+      await setDestination(KARACHI.lat, KARACHI.lng);
+      updateAddressUI();
+    })();
+  </script>
+</body>
+</html>

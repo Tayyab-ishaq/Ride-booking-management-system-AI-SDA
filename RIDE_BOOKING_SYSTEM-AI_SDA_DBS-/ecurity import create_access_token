@@ -1,0 +1,7 @@
+         conname          |                                               definition                                                
+--------------------------+---------------------------------------------------------------------------------------------------------
+ drivers_pkey             | PRIMARY KEY (id)
+ fk_drivers_user_id_users | FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+ users_role_check         | CHECK (((role)::text = ANY ((ARRAY['rider'::character varying, 'driver'::character varying])::text[])))
+(3 rows)
+

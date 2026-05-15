@@ -1,0 +1,111 @@
+version: '3.8'
+
+services:
+  # N8N Automation Server
+  n8n:
+    image: n8nio/n8n:latest
+    container_name: ride-n8n
+    ports:
+      - "5678:5678"
+    environment:
+      # N8N General Configuration
+      - N8N_HOST=localhost
+      - N8N_PORT=5678
+      - N8N_PROTOCOL=http
+      - N8N_SECURE_COOKIE=false
+      - N8N_WEBHOOK_URL=http://localhost:5678
+      - NODE_ENV=production
+      
+      # Database Configuration (N8N stores its own data)
+      - DB_TYPE=postgresdb
+      - DB_POSTGRESDB_HOST=n8n_postgres
+      - DB_POSTGRESDB_PORT=5432
+      - DB_POSTGRESDB_DATABASE=n8n
+      - DB_POSTGRESDB_USER=${N8N_DB_USER:-n8n_user}
+      - DB_POSTGRESDB_PASSWORD=${N8N_DB_PASSWORD:-n8n_secure_password}
+      - DB_POSTGRESDB_SSL=false
+      - DB_POSTGRESDB_EXECUTE_MIGRATIONS=true
+      
+      # Email Configuration
+      - N8N_EMAIL_MODE=smtp
+      - N8N_SMTP_HOST=${SMTP_HOST:-smtp.gmail.com}
+      - N8N_SMTP_PORT=${SMTP_PORT:-587}
+      - N8N_SMTP_USER=${SMTP_USER:-your-email@gmail.com}
+      - N8N_SMTP_PASS=${SMTP_PASS:-your-app-password}
+      - N8N_SMTP_SENDER=${SMTP_SENDER:-noreply@yourrides.com}
+      - N8N_SMTP_SSL=false
+      - N8N_SMTP_STARTTLS=true
+      
+      # Timezone
+      - TZ=UTC
+      
+      # Optional: Authentication
+      - N8N_BASIC_AUTH_ACTIVE=false  # Set to 'true' in production
+      - N8N_BASIC_AUTH_USER=${N8N_AUTH_USER:-admin}
+      - N8N_BASIC_AUTH_PASSWORD=${N8N_AUTH_PASSWORD:-change_me}
+      
+      # Optional: Security
+      - N8N_JWT_AUTH_EXPIRED=7d
+      - N8N_PAYLOAD_SIZE_MAX=16
+      
+    volumes:
+      # Persist N8N user data and workflows
+      - n8n_data:/home/node/.n8n
+      # Optional: Custom node modules
+      # - ./n8n_nodes:/custom_nodes
+    
+    depends_on:
+      - n8n_postgres
+    
+    networks:
+      - ride_management_network
+    
+    restart: unless-stopped
+    
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5678/healthz"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 40s
+  
+  # PostgreSQL Database for N8N
+  n8n_postgres:
+    image: postgres:15-alpine
+    container_name: ride-n8n-postgres
+    environment:
+      - POSTGRES_DB=n8n
+      - POSTGRES_USER=${N8N_DB_USER:-n8n_user}
+      - POSTGRES_PASSWORD=${N8N_DB_PASSWORD:-n8n_secure_password}
+      - POSTGRES_INITDB_ARGS=--encoding=UTF8
+      - TZ=UTC
+    
+    volumes:
+      # Persist database data
+      - n8n_postgres_data:/var/lib/postgresql/data
+    
+    ports:
+      - "5433:5432"  # Map to different port to avoid conflict with ride DB
+    
+    networks:
+      - ride_management_network
+    
+    restart: unless-stopped
+    
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${N8N_DB_USER:-n8n_user}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+# Volumes for persistent storage
+volumes:
+  n8n_data:
+    driver: local
+  n8n_postgres_data:
+    driver: local
+
+# Network for container communication
+networks:
+  ride_management_network:
+    driver: bridge

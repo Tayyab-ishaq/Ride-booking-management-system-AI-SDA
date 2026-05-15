@@ -1,0 +1,145 @@
+{
+  "name": "My workflow",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "http://localhost:5678/webhook/ride-completion",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        -144,
+        0
+      ],
+      "id": "df989c1d-b27e-43bb-9b0f-6f028c9d9475",
+      "name": "Webhook",
+      "webhookId": "54ffd85c-80e5-410c-91f3-181e400a336f"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT\n  r.id AS ride_id,\n  r.origin,\n  r.destination,\n  r.fare,\n  u.email AS rider_email,\n  u.first_name AS rider_name,\n  d.email AS driver_email,\n  d.first_name AS driver_name\nFROM rides r\nJOIN users u ON r.rider_id = u.id\nJOIN drivers d ON r.driver_id = d.id\nJOIN payments p ON p.ride_id = r.id\nWHERE r.id = $1\n  AND r.status = 'completed'\n  AND p.status = 'completed'\nLIMIT 1;",
+        "options": {
+          "queryReplacement": "$1 = {{ $node[\"Webhook\"].json[\"ride_id\"] }}"
+        }
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        112,
+        0
+      ],
+      "id": "a82a2bc0-37f3-4639-8e8d-479675bbcdbd",
+      "name": "Execute a SQL query",
+      "credentials": {
+        "postgres": {
+          "id": "AGWQr9qkOYJKc77D",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "fromEmail": "aliakhterakhter48@gmail.com",
+        "toEmail": "={{ $node[\"Execute a SQL query\"].json[\"rider_email\"] }}",
+        "subject": "Your ride is complete!",
+        "emailFormat": "text",
+        "text": "=Hi {{ $node[\"Execute a SQL query\"].json[\"rider_name\"] }},\n\nYour ride from {{ $node[\"Execute a SQL query\"].json[\"origin\"] }}\nto {{ $node[\"Execute a SQL query\"].json[\"destination\"] }}\nis complete.",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 2.1,
+      "position": [
+        384,
+        240
+      ],
+      "id": "debcd45c-3466-4d2a-a755-1821cf57b8b2",
+      "name": "Send an Email",
+      "webhookId": "aab85f05-596e-4382-a713-6aa6b1a82436",
+      "credentials": {
+        "smtp": {
+          "id": "8JU58BxGVyOLrH9A",
+          "name": "SMTP account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "fromEmail": "aliakhterakhter48@gmail.com",
+        "toEmail": "={{ $node[\"Execute a SQL query\"].json[\"driver_email\"] }}",
+        "emailFormat": "text",
+        "text": "=Hi {{ $node[\"Execute a SQL query\"].json[\"driver_name\"] }},\n\nThe ride has completed and payment is confirmed.\n\nFrom: {{ $node[\"Execute a SQL query\"].json[\"origin\"] }}\nTo: {{ $node[\"Execute a SQL query\"].json[\"destination\"] }}\nAmount: ${{ $node[\"Execute a SQL query\"].json[\"fare\"] }}\n\nGreat job!",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 2.1,
+      "position": [
+        416,
+        32
+      ],
+      "id": "165947e2-f92d-4a6b-aad4-ce9480ab060c",
+      "name": "Send an Email1",
+      "webhookId": "80d0f6a5-1a94-4847-994b-597229d4b551",
+      "credentials": {
+        "smtp": {
+          "id": "8JU58BxGVyOLrH9A",
+          "name": "SMTP account"
+        }
+      }
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Webhook": {
+      "main": [
+        [
+          {
+            "node": "Execute a SQL query",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Execute a SQL query": {
+      "main": [
+        [
+          {
+            "node": "Send an Email",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Send an Email1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send an Email": {
+      "main": [
+        []
+      ]
+    },
+    "Send an Email1": {
+      "main": [
+        []
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "versionId": "dd50c662-07de-488f-be94-64a8fe3c1854",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "4e799dc4826bcd2fcfa9a4e846ad60a51c832cbd79fbb7485ca41408e8b1af74"
+  },
+  "id": "SxKU8XJpqvnNRqzr",
+  "tags": []
+}

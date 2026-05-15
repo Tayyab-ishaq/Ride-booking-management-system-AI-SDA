@@ -1,0 +1,367 @@
+MATCHING API - COMPLETE TEST GUIDE
+==================================
+
+## Endpoint 1: POST /matching/find
+**Who uses it:** Rider
+**Purpose:** Find and assign an available driver to a ride request
+**Status Transition:** requested → accepted
+
+### Request:
+```json
+{
+  "ride_id": "770e8400-e29b-41d4-a716-446655440002"
+}
+```
+
+### Headers:
+```
+Content-Type: application/json
+Authorization: Bearer {rider_access_token}
+```
+
+### Full URL:
+```
+POST http://127.0.0.1:8000/api/matching/find
+```
+
+### Response (Success - 200):
+```json
+{
+  "id": "770e8400-e29b-41d4-a716-446655440002",
+  "rider_id": "550e8400-e29b-41d4-a716-446655440000",
+  "driver_id": "660e8400-e29b-41d4-a716-446655440001",
+  "status": "accepted",
+  "origin": "123 Main Street, Downtown",
+  "destination": "456 Park Avenue, Uptown",
+  "fare": null,
+  "created_at": "2026-05-08T12:05:00Z",
+  "updated_at": "2026-05-08T12:05:30Z"
+}
+```
+
+### Error Cases:
+```json
+// Ride not found (404)
+{
+  "detail": "Ride 00000000-0000-0000-0000-000000000000 not found"
+}
+
+// You don't own this ride (403)
+{
+  "detail": "You are not the owner of this ride request"
+}
+
+// Ride not in requested status (422)
+{
+  "detail": "Driver search can only be started for rides in requested status"
+}
+
+// No drivers available (409)
+{
+  "detail": "No available drivers at the moment"
+}
+
+// Unauthorized - no token (401)
+{
+  "detail": "Not authenticated"
+}
+```
+
+---
+
+## Endpoint 2: POST /matching/accept (NEW)
+**Who uses it:** Driver
+**Purpose:** Driver confirms acceptance of a matched ride offer
+**Status:** Verifies ride is in "accepted" status (no change)
+**Precondition:** Must have a ride in "accepted" status assigned to this driver
+
+### Request:
+```json
+{
+  "ride_id": "770e8400-e29b-41d4-a716-446655440002"
+}
+```
+
+### Headers:
+```
+Content-Type: application/json
+Authorization: Bearer {driver_access_token}
+```
+
+### Full URL:
+```
+POST http://127.0.0.1:8000/api/matching/accept
+```
+
+### Response (Success - 200):
+```json
+{
+  "id": "770e8400-e29b-41d4-a716-446655440002",
+  "rider_id": "550e8400-e29b-41d4-a716-446655440000",
+  "driver_id": "660e8400-e29b-41d4-a716-446655440001",
+  "status": "accepted",
+  "origin": "123 Main Street, Downtown",
+  "destination": "456 Park Avenue, Uptown",
+  "fare": null,
+  "created_at": "2026-05-08T12:05:00Z",
+  "updated_at": "2026-05-08T12:05:30Z"
+}
+```
+
+### Error Cases:
+```json
+// You are not the assigned driver (403)
+{
+  "detail": "You are not the assigned driver for this ride"
+}
+
+// Ride not found (404)
+{
+  "detail": "Ride 770e8400-e29b-41d4-a716-446655440002 not found"
+}
+
+// Ride not in accepted status (422)
+{
+  "detail": "Can only accept rides in 'accepted' status, current status is 'requested'"
+}
+
+// Unauthorized - no token (401)
+{
+  "detail": "Not authenticated"
+}
+```
+
+---
+
+## COMPLETE WORKFLOW
+
+### STEP 1: Rider creates a ride request
+```
+POST http://127.0.0.1:8000/api/rides/create
+Authorization: Bearer {rider_access_token}
+
+{
+  "origin": "123 Main Street, Downtown",
+  "destination": "456 Park Avenue, Uptown"
+}
+```
+**Save the `ride_id` from response**
+
+---
+
+### STEP 2: Rider finds a driver (matching)
+```
+POST http://127.0.0.1:8000/api/matching/find
+Authorization: Bearer {rider_access_token}
+
+{
+  "ride_id": "770e8400-e29b-41d4-a716-446655440002"
+}
+```
+**Status: requested → accepted**
+**Driver is now assigned**
+
+---
+
+### STEP 3: Driver accepts the matched ride (NEW)
+```
+POST http://127.0.0.1:8000/api/matching/accept
+Authorization: Bearer {driver_access_token}
+
+{
+  "ride_id": "770e8400-e29b-41d4-a716-446655440002"
+}
+```
+**Driver confirms acceptance**
+**Status remains: accepted**
+
+---
+
+### STEP 4: Driver starts the ride
+```
+PATCH http://127.0.0.1:8000/api/rides/770e8400-e29b-41d4-a716-446655440002/start
+Authorization: Bearer {driver_access_token}
+```
+**Status: accepted → in_progress**
+
+---
+
+### STEP 5: Driver completes the ride
+```
+PATCH http://127.0.0.1:8000/api/rides/770e8400-e29b-41d4-a716-446655440002/complete
+Authorization: Bearer {driver_access_token}
+```
+**Status: in_progress → completed**
+
+---
+
+### STEP 6: Rider rates the driver
+```
+POST http://127.0.0.1:8000/api/rides/770e8400-e29b-41d4-a716-446655440002/rate_driver
+Authorization: Bearer {rider_access_token}
+
+{
+  "rating": 5
+}
+```
+
+---
+
+## TESTING CHECKLIST
+
+✅ **Step 1: Setup (Do Once)**
+- [ ] Register a rider account
+- [ ] Register a driver account
+- [ ] Login as rider → save access_token as {rider_access_token}
+- [ ] Login as driver → save access_token as {driver_access_token}
+
+✅ **Step 2: Test Matching Flow**
+- [ ] Create a ride as rider
+- [ ] Copy ride_id from response
+- [ ] Call /matching/find to assign driver
+- [ ] Verify ride status changed to "accepted"
+- [ ] Verify driver_id is populated
+
+✅ **Step 3: Test Driver Accept**
+- [ ] Call /matching/accept as driver with same ride_id
+- [ ] Verify driver can confirm acceptance
+- [ ] Verify ride remains in "accepted" status
+
+✅ **Step 4: Continue Lifecycle**
+- [ ] Start ride (driver)
+- [ ] Complete ride (driver)
+- [ ] Rate driver (rider)
+
+---
+
+## QUICK COPY-PASTE BODIES
+
+### Register Rider:
+```json
+{
+  "full_name": "John Rider",
+  "email": "rider@example.com",
+  "password": "securePassword123",
+  "confirm_password": "securePassword123",
+  "role": "rider"
+}
+```
+
+### Register Driver:
+```json
+{
+  "full_name": "Jane Driver",
+  "email": "driver@example.com",
+  "password": "securePassword123",
+  "confirm_password": "securePassword123",
+  "role": "driver"
+}
+```
+
+### Login Rider:
+```json
+{
+  "email": "rider@example.com",
+  "password": "securePassword123"
+}
+```
+
+### Login Driver:
+```json
+{
+  "email": "driver@example.com",
+  "password": "securePassword123"
+}
+```
+
+### Create Ride:
+```json
+{
+  "origin": "123 Main Street, Downtown",
+  "destination": "456 Park Avenue, Uptown"
+}
+```
+
+### Matching Find:
+```json
+{
+  "ride_id": "PASTE_RIDE_ID_HERE"
+}
+```
+
+### Matching Accept:
+```json
+{
+  "ride_id": "PASTE_RIDE_ID_HERE"
+}
+```
+
+### Rate Driver:
+```json
+{
+  "rating": 5
+}
+```
+
+---
+
+## KEY DIFFERENCES BETWEEN ENDPOINTS
+
+| Feature | /matching/find | /matching/accept |
+|---------|----------------|------------------|
+| **User** | Rider | Driver |
+| **Purpose** | Find & assign driver | Confirm acceptance |
+| **Precondition** | Ride in "requested" status | Ride in "accepted" status, driver assigned |
+| **Status Change** | Yes (requested → accepted) | No (stays accepted) |
+| **Return** | Updated ride with assigned driver | Confirmation of assignment |
+| **Error** | If no drivers available | If driver not assigned to this ride |
+
+---
+
+## TESTING WITH MULTIPLE DRIVERS
+
+To test driver availability scenarios:
+1. Create 3+ driver accounts
+2. Create multiple rides
+3. Test matching with different numbers of available drivers
+4. Verify the system picks the first available driver
+
+---
+
+## CURL EXAMPLES
+
+### Matching Find (Rider):
+```bash
+curl -X POST http://127.0.0.1:8000/api/matching/find \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer YOUR_RIDER_TOKEN" \
+  -d '{
+    "ride_id": "770e8400-e29b-41d4-a716-446655440002"
+  }'
+```
+
+### Matching Accept (Driver):
+```bash
+curl -X POST http://127.0.0.1:8000/api/matching/accept \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer YOUR_DRIVER_TOKEN" \
+  -d '{
+    "ride_id": "770e8400-e29b-41d4-a716-446655440002"
+  }'
+```
+
+---
+
+## EXPECTED BEHAVIOR
+
+✅ Works:
+- Rider searches for driver → driver assigned
+- Driver accepts matched ride
+- Status transitions properly
+- IDs are correctly populated
+
+❌ Fails (Expected):
+- Matching without auth → 401 Unauthorized
+- Driver accepting without being assigned → 403 Forbidden
+- Accepting ride not in "accepted" status → 422 Unprocessable Entity
+- Ride not found → 404 Not Found
